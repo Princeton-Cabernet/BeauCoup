@@ -1,0 +1,170 @@
+# This YAML file contains data-plane count-distinct queries for simultaneous execution.
+# For each query q, we define query key and the counting attribute. 
+# we group packets by key, then report when a particular key has many distinct attributes, exceeding the given threshold.
+
+# Note: since every packet is distinct, "distinct: packets" is an alias of "distinct: ingress_metadata.ingress_timestamp".
+
+- name : SuperSpanner
+  key: ipv4.srcAddr
+  conditions:
+    - distinct: ipv4.dstAddr
+      exceeds: 1000
+
+- name : DoS
+  key: [ipv4.dstAddr, tcp.dstPort]
+  conditions:
+    - distinct: packets
+      exceeds: 10000
+
+- name : DDoS
+  key: [ipv4.dstAddr, tcp.dstPort]
+  conditions:
+    - distinct: [ipv4.srcAddr, tcp.srcPort]
+      exceeds: 5000
+
+- name : PortScanningTCP
+  key: [ipv4.srcAddr, ipv4.dstAddr]
+  conditions:
+    - distinct: tcp.dstPort
+      exceeds: 100
+
+- name : PortScanningUDP
+  key: [ipv4.srcAddr, ipv4.dstAddr]
+  conditions:
+    - distinct: udp.dstPort
+      exceeds: 100
+
+- name : DistributedPortScanning
+  key: ipv4.dstAddr
+  conditions:
+    - distinct: tcp.dstPort
+      exceeds: 100
+
+# Enumerating different combinations of anomaly spanning
+
+- name : SourceIPSpanDstIP
+  key: ipv4.srcAddr
+  conditions:
+    - distinct: ipv4.dstAddr
+      exceeds: 1000
+
+- name : SourceIPSpanDstPort
+  key: ipv4.srcAddr
+  conditions:
+    - distinct: [ipv4.dstAddr, tcp.dstPort]
+      exceeds: 1000
+
+- name : SourcePortSpanDstIP
+  key: [ipv4.srcAddr, tcp.dstPort]
+  conditions:
+    - distinct: ipv4.dstAddr
+      exceeds: 1000
+
+- name : SourcePortSpanDstPort
+  key: [ipv4.srcAddr, tcp.dstPort]
+  conditions:
+    - distinct: [ipv4.dstAddr, tcp.dstPort]
+      exceeds: 1000
+
+- name: DstIPSpanSrcIP
+  key: ipv4.dstAddr
+  conditions:
+    - distinct: ipv4.srcAddr
+      exceeds: 1000
+
+- name: DstIPSpanSrcPort
+  key: ipv4.dstAddr
+  conditions:
+    - distinct: [ipv4.srcAddr, tcp.srcPort]
+      exceeds: 1000
+
+- name: DstPortSpanSrcIP
+  key: [ipv4.dstAddr, tcp.dstPort]
+  conditions:
+    - distinct: ipv4.srcAddr
+      exceeds: 1000
+
+- name: DstPortSpanSrcPort
+  key: [ipv4.dstAddr, tcp.dstPort]
+  conditions:
+    - distinct: [ipv4.srcAddr, tcp.srcPort]
+      exceeds: 1000
+
+# UDP version
+
+- name : UDPSourceIPSpanDstPort
+  key: ipv4.srcAddr
+  conditions:
+    - distinct: [ipv4.dstAddr, udp.dstPort]
+      exceeds: 1000
+
+- name : UDPSourcePortSpanDstIP
+  key: [ipv4.srcAddr, udp.dstPort]
+  conditions:
+    - distinct: ipv4.dstAddr
+      exceeds: 1000
+
+- name : UDPSourcePortSpanDstPort
+  key: [ipv4.srcAddr, udp.dstPort]
+  conditions:
+    - distinct: [ipv4.dstAddr, udp.dstPort]
+      exceeds: 1000
+
+- name: UDPDstIPSpanSrcPort
+  key: ipv4.dstAddr
+  conditions:
+    - distinct: [ipv4.srcAddr, udp.srcPort]
+      exceeds: 1000
+
+- name: UDPDstPortSpanSrcIP
+  key: [ipv4.dstAddr, udp.dstPort]
+  conditions:
+    - distinct: ipv4.srcAddr
+      exceeds: 1000
+
+- name: UDPDstPortSpanSrcPort
+  key: [ipv4.dstAddr, udp.dstPort]
+  conditions:
+    - distinct: [ipv4.srcAddr, udp.srcPort]
+      exceeds: 1000
+
+# Single Host Pecularity
+
+- name: SingleHostPortScanVictim
+  key: [ipv4.srcAddr, ipv4.dstAddr, tcp.srcPort]
+  conditions:
+    - distinct: [tcp.dstPort]
+      exceeds: 500
+
+- name: UDPSingleHostPortScanVictim
+  key: [ipv4.srcAddr, ipv4.dstAddr, udp.srcPort]
+  conditions:
+    - distinct: [udp.dstPort]
+      exceeds: 500
+
+- name: ManyParallelSendSource
+  key: [ipv4.srcAddr, ipv4.dstAddr, tcp.dstPort]
+  conditions:
+    - distinct: [tcp.srcPort]
+      exceeds: 100
+
+- name: UDPManyParallelSendSource
+  key: [ipv4.srcAddr, ipv4.dstAddr, udp.dstPort]
+  conditions:
+    - distinct: [udp.srcPort]
+      exceeds: 100
+
+# Heavy Hitter flows
+
+- name: IPpairHH
+  key: [ipv4.srcAddr, ipv4.dstAddr]
+  conditions:
+    - distinct: packets
+      exceeds: 10000
+
+- name: 5tupleHH
+  key: [ipv4.srcAddr, ipv4.dstAddr, tcp.srcPort, tcp.dstPort]
+  conditions:
+    - distinct: packets
+      exceeds: 5000
+

@@ -1,0 +1,769 @@
+/*
+	BeauCoup: Multiple distinct queries via coupon collectors
+	
+	Copyright (C) 2019 Xiaoqi Chen, Princeton University
+    xiaoqic [at] cs.princeton.edu
+    
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+*/
+{% if False %}
+	#error This is a code template, not a P4 program. Please use the accompanying code generator. 
+{% endif %}
+
+#define DECAY_TIME_WINDOW (100*1000*1000)
+//Default table entry expiry timeout: 100ms
+
+//== Preamble: constants, headers
+
+#include <core.p4>
+#include <tna.p4>
+
+typedef bit<48> mac_addr_t;
+typedef bit<32> ipv4_addr_t;
+typedef bit<16> ether_type_t;
+const ether_type_t ETHERTYPE_IPV4 = 16w0x0800;
+const ether_type_t ETHERTYPE_VLAN = 16w0x0810;
+
+typedef bit<8> ip_protocol_t;
+const ip_protocol_t IP_PROTOCOLS_ICMP = 1;
+const ip_protocol_t IP_PROTOCOLS_TCP = 6;
+const ip_protocol_t IP_PROTOCOLS_UDP = 17;
+
+
+header ethernet_h {
+    mac_addr_t dst_addr;
+    mac_addr_t src_addr;
+    bit<16> ether_type;
+}
+
+header ipv4_h {
+    bit<4> version;
+    bit<4> ihl;
+    bit<8> diffserv;
+    bit<16> total_len;
+    bit<16> identification;
+    bit<3> flags;
+    bit<13> frag_offset;
+    bit<8> ttl;
+    bit<8> protocol;
+    bit<16> hdr_checksum;
+    ipv4_addr_t src_addr;
+    ipv4_addr_t dst_addr;
+}
+
+header tcp_h {
+    bit<16> src_port;
+    bit<16> dst_port;
+    
+    bit<32> seq_no;
+    bit<32> ack_no;
+    bit<4> data_offset;
+    bit<4> res;
+    bit<8> flags;
+    bit<16> window;
+    bit<16> checksum;
+    bit<16> urgent_ptr;
+}
+
+header udp_h {
+    bit<16> src_port;
+    bit<16> dst_port;
+    bit<16> hdr_lenght;
+    bit<16> checksum;
+}
+
+struct header_t {
+    ethernet_h ethernet;
+    ipv4_h ipv4;
+    tcp_h tcp;
+    udp_h udp;
+}
+
+struct paired_32bit {
+    bit<32> hi;
+    bit<32> lo;
+}
+
+
+//== Metadata definition: one set of variables for each hash function
+
+struct ig_metadata_t {
+    // hash function activations
+{% for h in hashes %}
+    bit<16> h_{{h.id}};				// the value of h(attr)
+    bit<1> h_{{h.id}}_activated; 	// if there's any coupon activated
+    bit<4> h_{{h.id}}_keydefn;		// the key definition id (later used for reconstructing key)
+    bit<8> h_{{h.id}}_qid;			// the query id activated			
+    bit<8> h_{{h.id}}_cid;			// the coupon id activated
+    bit<8> h_{{h.id}}_ctotal;		// number of coupons required for sending alert
+{% endfor %}
+ 
+    bit<1> random_1_bit;
+
+    // after tie breaking, one coupon gets selected
+    bit<1> h_s_activated;
+    bit<4> h_s_keydefn;
+    bit<8> h_s_qid;
+    bit<8> h_s_cid;
+    bit<8> h_s_ctotal;
+    
+    //exctracting flow key
+    bit<32> key_p1;
+    bit<32> key_p2;
+    bit<16> key_p3;
+    bit<16> key_p4;
+    bit<32> key_sig;
+    bit<16> key_loc;
+
+
+    // decay gatekeeper related
+    bit<32> current_timestamp;
+    bit<1> cf_decay_has_expired;
+    // key check
+    bit<1> cf_key_matched;
+
+    // coupon operator related
+    bit<32> coupon_onehot;
+    bit<32> coupon_merge_check;
+    bit<8> coupon_total_activated;
+
+}
+struct eg_metadata_t {
+}
+
+//== Parser and deparser
+
+parser TofinoIngressParser(
+        packet_in pkt,
+        inout ig_metadata_t ig_md,
+        out ingress_intrinsic_metadata_t ig_intr_md) {
+    state start {
+        pkt.extract(ig_intr_md);
+        transition select(ig_intr_md.resubmit_flag) {
+            1 : parse_resubmit;
+            0 : parse_port_metadata;
+        }
+    }
+
+    state parse_resubmit {
+        // Parse resubmitted packet here.
+        pkt.advance(64); 
+        transition accept;
+    }
+
+    state parse_port_metadata {
+        pkt.advance(64);  //tofino 1 port metadata size
+        transition accept;
+    }
+}
+parser SwitchIngressParser(
+        packet_in pkt,
+        out header_t hdr,
+        out ig_metadata_t ig_md,
+        out ingress_intrinsic_metadata_t ig_intr_md) {
+
+    TofinoIngressParser() tofino_parser;
+
+    state start {
+        tofino_parser.apply(pkt, ig_md, ig_intr_md);
+        transition parse_ethernet;
+    }
+    
+    state parse_ethernet {
+        pkt.extract(hdr.ethernet);
+        transition select (hdr.ethernet.ether_type) {
+            ETHERTYPE_IPV4 : parse_ipv4;
+            default : reject;
+        }
+    }
+    
+    state parse_ipv4 {
+        pkt.extract(hdr.ipv4);
+        transition select(hdr.ipv4.protocol) {
+            IP_PROTOCOLS_TCP : parse_tcp;
+            IP_PROTOCOLS_UDP : parse_udp;
+            default : accept;
+        }
+    }
+    
+    state parse_tcp {
+        pkt.extract(hdr.tcp);
+        transition select(hdr.ipv4.total_len) {
+            default : accept;
+        }
+    }
+    
+    state parse_udp {
+        pkt.extract(hdr.udp);
+        transition select(hdr.udp.dst_port) {
+            default: accept;
+        }
+    }
+}
+
+control SwitchIngressDeparser(
+        packet_out pkt,
+        inout header_t hdr,
+        in ig_metadata_t ig_md,
+        in ingress_intrinsic_metadata_for_deparser_t ig_intr_dprsr_md) {
+         
+    //Resubmit() resubmit;
+    
+    apply {        
+        pkt.emit(hdr.ethernet);
+        pkt.emit(hdr.ipv4);
+        pkt.emit(hdr.tcp);
+        pkt.emit(hdr.udp);
+    }
+}
+
+parser SwitchEgressParser(
+        packet_in pkt,
+        out header_t hdr,
+        out eg_metadata_t eg_md,
+        out egress_intrinsic_metadata_t eg_intr_md) {
+    state start {
+        pkt.extract(eg_intr_md);
+        transition accept;
+    }
+}
+
+control SwitchEgressDeparser(
+        packet_out pkt,
+        inout header_t hdr,
+        in eg_metadata_t eg_md,
+        in egress_intrinsic_metadata_for_deparser_t eg_intr_md_for_dprsr) {
+    apply {
+    }
+}
+
+
+//== Control logic 
+
+control SwitchIngress(
+        inout header_t hdr,
+        inout ig_metadata_t ig_md,
+        in ingress_intrinsic_metadata_t ig_intr_md,
+        in ingress_intrinsic_metadata_from_parser_t ig_intr_prsr_md,
+        inout ingress_intrinsic_metadata_for_deparser_t ig_intr_dprsr_md,
+        inout ingress_intrinsic_metadata_for_tm_t ig_intr_tm_md) {
+         
+        action drop() {
+            ig_intr_dprsr_md.drop_ctl = 0x1; // Drop packet.
+        }
+        action nop() {
+        }
+       
+        action route_to_64(){
+            //route to CPU NIC. on model, it is veth250
+            ig_intr_tm_md.ucast_egress_port=64;
+        }
+        action reflect(){
+            //send you back to where you're from
+            ig_intr_tm_md.ucast_egress_port=ig_intr_md.ingress_port;
+        }
+        
+        // ======== Section 1: use hash to activate coupons
+
+        // hash function definitions
+        
+{% for h in hashes %}
+        Hash<bit<16>>(HashAlgorithm_t.CRC16) hash_{{h.id}};
+        action calc_hash_{{h.id}}_a(){
+            ig_md.h_{{h.id}} = hash_{{h.id}}.get({  {{h.fields}}   });    
+        }
+        
+        action set_h_{{h.id}}_matched(bit<8> cid,bit<8> qid,bit<8> ctot,bit<4> kdf){
+            ig_md.h_{{h.id}}_activated=1;
+            ig_md.h_{{h.id}}_cid=cid;
+            ig_md.h_{{h.id}}_qid=qid;
+            ig_md.h_{{h.id}}_ctotal=ctot;
+            ig_md.h_{{h.id}}_keydefn=kdf;
+        }
+        action set_h_{{h.id}}_no_match(){
+            ig_md.h_{{h.id}}_activated=0;
+        }
+        
+        table tb_activate_coupons_h_{{h.id}}_ {
+            key = {
+                ig_md.h_{{h.id}}: range;
+            }
+            actions = {
+                set_h_{{h.id}}_matched;
+                set_h_{{h.id}}_no_match;
+            }
+            default_action = set_h_{{h.id}}_no_match();
+            const entries = {
+                {% for m in h.matches %}
+                    {{m.l}} .. {{m.r}} : set_h_{{h.id}}_matched({{m.cid}},{{m.qid}},{{m.ctot}},{{m.kdf}});
+                {% endfor %}
+            }
+        }
+
+{% endfor %}
+
+		// tiebreaking entropy
+        action prepare_timestamp(){
+            ig_md.current_timestamp=(bit<32>)ig_intr_md.ingress_mac_tstamp;
+        }
+        Hash<bit<1>>(HashAlgorithm_t.RANDOM) rng;
+        action prepare_random_1_bit(){
+            ig_md.random_1_bit = rng.get({ig_md.current_timestamp,ig_md.current_timestamp});
+        }
+
+        //after having the hash, let's do tiebreaking
+{% for h in hashes %}
+        action actb_select_h_{{h.id}}_(){
+            ig_md.h_s_activated=1;
+            ig_md.h_s_cid=ig_md.h_{{h.id}}_cid;
+            ig_md.h_s_qid=ig_md.h_{{h.id}}_qid;
+            ig_md.h_s_ctotal=ig_md.h_{{h.id}}_ctotal;
+            ig_md.h_s_keydefn=ig_md.h_{{h.id}}_keydefn;
+        }
+{% endfor %}
+
+        table tb_activated_coupon_tiebreaking {
+            key = {
+{% for h in hashes %}
+                ig_md.h_{{h.id}}_activated: ternary;
+{% endfor %}
+                ig_md.random_1_bit: ternary; 
+            }
+            actions = {
+{% for h in hashes %}
+                actb_select_h_{{h.id}}_;
+{% endfor %}
+                nop;
+            }
+            default_action = nop();
+            const entries = {
+            // Part 0: no one is activated
+                // only one rule
+                ( {% for c in hashes %}0 &&& 1w1, {% endfor %} 0 &&& 1w0 ) : nop();
+                
+            // Part 1: only one activated
+            {% for h in hashes %}
+                // rule for only hash {{h.id}} is activated
+                ( {% for c in hashes %}{{(c.id==h.id)|int}} &&& 1w1, {% endfor %} 0 &&& 1w0 ) : actb_select_h_{{h.id}}_();
+            {% endfor %}
+            
+            // Part 2: only two activated
+            {% for h1 in hashes %}
+            {% for h2 in hashes %}
+            {% if h1.id<h2.id %}
+                // rules for {{h1.id}} and {{h2.id}} 
+                // coin toss gives {{h1.id}} 
+                ( {% for c in hashes %}{{(c.id==h1.id or c.id==h2.id)|int}} &&& 1w1, {% endfor %} 0 &&& 1w0 ) : actb_select_h_{{h1.id}}_();
+                // coin toss gives {{h2.id}} 
+                ( {% for c in hashes %}{{(c.id==h1.id or c.id==h2.id)|int}} &&& 1w1, {% endfor %} 1 &&& 1w0 ) : actb_select_h_{{h2.id}}_();
+            {% endif %}
+            {% endfor %}
+            {% endfor %}
+            }
+        }
+
+
+        // Prepare onehot variable for one coupon
+        action write_onehot(bit<32> o){
+            ig_md.coupon_onehot = o;
+        }
+        table tb_set_onehot {
+            key = {
+                ig_md.h_s_cid: exact;
+            }
+            size = 32;
+            actions = {
+                write_onehot;
+            }
+            default_action = write_onehot(0);
+            const entries = {
+                {% for i in range(32) %}
+                  {{i}} : write_onehot(32w0b1{% for j in range(i) %}0{% endfor %});
+                {% endfor %}
+            }
+        }
+
+        // ======== Section 2: having one coupon, find flow key for this query
+
+        Hash<bit<32>>(HashAlgorithm_t.IDENTITY) copy32_1;
+        Hash<bit<32>>(HashAlgorithm_t.IDENTITY) copy32_2;
+        Hash<bit<16>>(HashAlgorithm_t.IDENTITY) copy16_1;
+        Hash<bit<16>>(HashAlgorithm_t.IDENTITY) copy16_2;
+        Hash<bit<16>>(HashAlgorithm_t.IDENTITY) copy16_3;
+        Hash<bit<16>>(HashAlgorithm_t.IDENTITY) copy16_4;
+
+
+        // 128-bit key, split into 4 parts.
+        //6 choices: srcip,dstip,tcp sport,dport, udp sport,dport
+        action ek_c1_select(){
+            ig_md.key_p1=copy32_1.get({hdr.ipv4.src_addr});
+        }
+        action ek_c1_erase(){
+            ig_md.key_p1=0;
+        }
+        table tb_extract_key_choice_1_ {
+            key = {
+                ig_md.h_s_keydefn: exact;
+            }
+            size = 16;
+            actions = {
+                ek_c1_select;
+                ek_c1_erase;
+            }
+            const entries = {
+                {% set K = "hdr.ipv4.src_addr" %}
+                {% set A = "ek_c1_select" %}
+                {% for i in range(16) %}
+                {% if K in keydefn[i] %}
+                  {{i}} : {{A}}();
+                {% endif %}
+                {% endfor %}
+            }
+            default_action = ek_c1_erase;
+        }
+
+        action ek_c2_select(){
+            ig_md.key_p2=copy32_2.get({hdr.ipv4.dst_addr});
+        }
+        action ek_c2_erase(){
+            ig_md.key_p2=0;
+        }
+        table tb_extract_key_choice_2_ {
+            key = {
+                ig_md.h_s_keydefn: exact;
+            }
+            size = 16;
+            actions = {
+                ek_c2_select;
+                ek_c2_erase;
+            }
+            const entries = {
+                {% set K = "hdr.ipv4.dst_addr" %}
+                {% set A = "ek_c2_select" %}
+                {% for i in range(16) %}
+                {% if K in keydefn[i] %}
+                  {{i}} : {{A}}();
+                {% endif %}
+                {% endfor %}
+            }
+            default_action = ek_c2_erase;
+        }
+
+        action ek_c3_select_tcp(){
+            ig_md.key_p3=copy16_1.get({hdr.tcp.src_port});
+        }
+        action ek_c3_select_udp(){
+            ig_md.key_p3=copy16_2.get({hdr.udp.src_port});
+        }
+        action ek_c3_erase(){
+            ig_md.key_p3=0;
+        }
+        table tb_extract_key_choice_3_ {
+            key = {
+                ig_md.h_s_keydefn: exact;
+            }
+            size = 16;
+            actions = {
+                ek_c3_select_tcp;
+                ek_c3_select_udp;
+                ek_c3_erase;
+            }
+            const entries = {
+                {% set K1 = "hdr.tcp.src_port" %}
+                {% set A1 = "ek_c3_select_tcp" %}
+                {% set K2 = "hdr.udp.src_port" %}
+                {% set A2 = "ek_c3_select_udp" %}
+                {% for i in range(16) %}
+                {% if K1 in keydefn[i] %}
+                  {{i}} : {{A1}}();
+                {% endif %}
+                {% if K2 in keydefn[i] %}
+                  {{i}} : {{A2}}();
+                {% endif %}
+                {% endfor %}
+            }
+            default_action = ek_c3_erase;
+        }
+
+        action ek_c4_select_tcp(){
+            ig_md.key_p4=copy16_3.get({hdr.tcp.dst_port});
+        }
+        action ek_c4_select_udp(){
+            ig_md.key_p4=copy16_4.get({hdr.udp.dst_port});
+        }
+        action ek_c4_erase(){
+            ig_md.key_p4=0;
+        }
+        table tb_extract_key_choice_4_ {
+            key = {
+                ig_md.h_s_keydefn: exact;
+            }
+            size = 16;
+            actions = {
+                ek_c4_select_tcp;
+                ek_c4_select_udp;
+                ek_c4_erase;
+            }
+            const entries = {
+                {% set K1 = "hdr.tcp.dst_port" %}
+                {% set A1 = "ek_c4_select_tcp" %}
+                {% set K2 = "hdr.udp.dst_port" %}
+                {% set A2 = "ek_c4_select_udp" %}
+                {% for i in range(16) %}
+                {% if K1 in keydefn[i] %}
+                  {{i}} : {{A1}}();
+                {% endif %}
+                {% if K2 in keydefn[i] %}
+                  {{i}} : {{A2}}();
+                {% endif %}
+                {% endfor %}
+            }
+            default_action = ek_c4_erase;
+        }
+
+
+        Hash<bit<32>>(HashAlgorithm_t.CRC32) hash_key_sig;
+        Hash<bit<16>>(HashAlgorithm_t.CRC16) hash_key_loc;
+            //based on full flowID, select memory location and a 32-bit sig
+        action extract_key_sig (){
+            ig_md.key_sig=hash_key_sig.get({ ig_md.h_s_qid,  ig_md.key_p1,ig_md.key_p2,ig_md.key_p3,ig_md.key_p4});
+        }
+        action extract_key_loc (){
+            ig_md.key_loc=hash_key_loc.get({ ig_md.h_s_qid,  ig_md.key_p1,ig_md.key_p2,ig_md.key_p3,ig_md.key_p4});
+        }
+
+        // ======== Section 3: actually try to collect this coupon 
+        // pseudocode
+        // 1. if timestamp[idx]< current_timestamp - window:
+        //      flag=clear, timestamp[idx] = current_timestamp
+        //    else:
+        //      flag=continue (do nothing)
+        // 2. clear: 
+        //      curr_key[idx]=key_sig, flag2=clear
+        // 2. continue:
+        //    if curr_key[idx]==key_sig:
+        //      flag2=incr
+        //    else:
+        //       stop
+        // 3. clear:
+        //       coupons[idx]=onehot, ctr[idx]=1, result=false
+        // 3. incr:
+        //       coupons[idx] ^= onehot, if coupons[idx]&onehot == 0: ctr[idx]+=1, result=(ctr[idx]>=CTOT)
+        //      
+
+        // 3.1 decay check
+
+        Register<bit<32>,_ >(65536) reg_decay_timestamp;
+        RegisterAction<bit<32>, _, bit<1>>(reg_decay_timestamp) check_decay_timestamp = {
+            void apply(inout bit<32> value, out bit<1> read_value){
+                bit<32> in_value;
+                in_value = value;
+                if(in_value + DECAY_TIME_WINDOW < ig_md.current_timestamp)//expired
+                {
+                    value = ig_md.current_timestamp;
+                    read_value = 1;
+                }else{
+                    value = in_value;
+                    read_value = 0;
+                }
+            }
+        };
+        action exec_check_decay_timestamp(){
+            ig_md.cf_decay_has_expired = check_decay_timestamp.execute(ig_md.key_loc);
+        }
+
+
+
+        // 3.2 what is the current key+qid sig?
+        //when flush, write into these
+        Register<bit<32>,_ >(65536) reg_current_keysig;
+        RegisterAction<bit<32>, _, bit<1>>(reg_current_keysig) write_keysig = {
+            void apply(inout bit<32> value, out bit<1> read_value){
+                value=ig_md.key_sig;
+                read_value=1;
+            }
+        };
+        action exec_write_keysig(){
+            write_keysig.execute(ig_md.key_loc);
+            ig_md.cf_key_matched=1;
+        }
+
+        RegisterAction<bit<32>, _, bit<1>>(reg_current_keysig) check_keysig = {
+            void apply(inout bit<32> value, out bit<1> read_value){
+                if(value == ig_md.key_sig){
+                    read_value=1;
+                }else{
+                    read_value=0;
+                }
+            }
+        };
+        action exec_check_keysig(){
+            ig_md.cf_key_matched=check_keysig.execute(ig_md.key_loc);
+        }
+
+
+        // 2.3 actually write coupon!
+
+        Register<paired_32bit, _ >(65536) reg_coupons;
+        //logic: flush simply sets 1 coupon. merge will output the old 32-bit (later count)
+        RegisterAction<paired_32bit, _, bit<32>>(reg_coupons) regcoupon_flush = {
+             void apply(inout paired_32bit value, out bit<32> rv) {         
+                rv = 0;                                               
+                paired_32bit in_value;                                     
+                in_value = value;                                     
+                value.lo =  ig_md.coupon_onehot;
+                value.hi = 0;
+                rv = 0;
+            }                             
+        };
+        action exec_regcoupon_flush(){
+            regcoupon_flush.execute(ig_md.key_loc);
+            ig_md.coupon_merge_check = 0;
+        }
+        RegisterAction<paired_32bit, _, bit<32>>(reg_coupons) regcoupon_merge = {
+             void apply(inout paired_32bit value, out bit<32> rv) {         
+                rv = 0;                                               
+                paired_32bit in_value;                                     
+                in_value = value;                                     
+                value.lo =  in_value.lo | ig_md.coupon_onehot;
+                value.hi = in_value.lo & ig_md.coupon_onehot;
+                rv = value.hi;
+            }                             
+        };
+        action exec_regcoupon_merge(){
+            ig_md.coupon_merge_check = regcoupon_merge.execute(ig_md.key_loc);
+        }
+
+        Register<bit<32>,_ >(65536) reg_counter_activated;
+        RegisterAction<bit<32>, _, bit<32>>(reg_counter_activated) counter_incr = {
+            void apply(inout bit<32> value, out bit<32> read_value){
+                bit<32> in_value=value;
+                value=in_value+1;
+                read_value=value;
+            }
+        };
+        action exec_counter_incr(){
+            ig_md.coupon_total_activated = (bit<8>) counter_incr.execute(ig_md.key_loc);
+        }
+
+        RegisterAction<bit<32>, _, bit<32>>(reg_counter_activated) counter_set_to_one = {
+            void apply(inout bit<32> value, out bit<32> read_value){
+                value=1;
+                read_value=value;
+            }
+        };
+        action exec_counter_set_to_one(){
+            ig_md.coupon_total_activated = (bit<8>) counter_set_to_one.execute(ig_md.key_loc);
+        }
+
+
+
+        apply {
+            //For debugging with mirrored traffic, alert packets are routed back to sender
+            reflect();
+
+{% for h in hashes %}
+            calc_hash_{{h.id}}_a();
+{% endfor %}
+
+            prepare_timestamp();
+            prepare_random_1_bit();
+
+
+{% for h in hashes %}
+            tb_activate_coupons_h_{{h.id}}_.apply();
+{% endfor %}
+
+
+            tb_activated_coupon_tiebreaking.apply();
+
+            // no coupon? stop processing
+            if(ig_md.h_s_activated==0){
+                drop();exit;
+            }
+            // now we do have coupon, collect it...
+
+            tb_set_onehot.apply();
+
+            tb_extract_key_choice_1_.apply();
+            tb_extract_key_choice_2_.apply();
+            tb_extract_key_choice_3_.apply();
+            tb_extract_key_choice_4_.apply();
+
+            extract_key_sig();
+            extract_key_loc();
+
+            exec_check_decay_timestamp();
+            if(ig_md.cf_decay_has_expired==1){
+                exec_write_keysig();
+            }else{
+                exec_check_keysig();
+            }
+
+            if(ig_md.cf_decay_has_expired==1){
+                exec_regcoupon_flush();
+            }else{
+                if(ig_md.cf_key_matched==1){
+                    exec_regcoupon_merge();
+                }
+            }
+
+            bool cf_new_coupon_collected = (ig_md.coupon_merge_check==0);
+            if(ig_md.cf_decay_has_expired==1){
+                exec_counter_set_to_one();
+            }else{
+                if(ig_md.cf_key_matched==1 && cf_new_coupon_collected){
+                    exec_counter_incr();
+                }
+            }
+
+            //finally, check coupon count: do we have enough coupons to send an alert?
+            if(ig_md.coupon_total_activated == ig_md.h_s_ctotal){
+                // add a flag, send to mirror session, etc
+                // for now, we mark the ethernet headers for alert. 
+                // Only reporting query ID is enough (query key can be reconstructed from header).
+                hdr.ethernet.src_addr = 233;
+                hdr.ethernet.dst_addr = bit<48> ig_md.h_s_qid;
+            }else{
+            	drop();exit;
+            }
+            
+        }
+}
+
+// ---------------------------------------------------------------------------
+// Egress Control
+// ---------------------------------------------------------------------------
+control SwitchEgress(
+        inout header_t hdr,
+        inout eg_metadata_t eg_md,
+        in egress_intrinsic_metadata_t eg_intr_md,
+        in egress_intrinsic_metadata_from_parser_t eg_intr_md_from_prsr,
+        inout egress_intrinsic_metadata_for_deparser_t ig_intr_dprs_md,
+        inout egress_intrinsic_metadata_for_output_port_t eg_intr_oport_md) {
+    apply {
+    }
+}
+
+
+
+Pipeline(SwitchIngressParser(),
+         SwitchIngress(),
+         SwitchIngressDeparser(),
+         SwitchEgressParser(),
+         SwitchEgress(),
+         SwitchEgressDeparser()
+         ) pipe;
+
+Switch(pipe) main;
+
