@@ -32,28 +32,28 @@ def parse_pcap(FN, count=-1, debug=False):
 					print('Progress: %d'%i)
             
 			pdict={}
-			pdict['ingress_metadata.ingress_timestamp']=pkt.time
+			pdict['ig_intr_md.ingress_mac_tstamp']=pkt.time
 			if pkt.haslayer(IP):
-				pdict['ipv4.ttl']=pkt[IP].ttl
-				pdict['ipv4.protocol']=pkt[IP].proto
-				pdict['ipv4.checksum']=pkt[IP].chksum
-				pdict['ipv4.srcAddr']=pkt[IP].src
-				pdict['ipv4.dstAddr']=pkt[IP].dst
+				pdict['hdr.ipv4.ttl']=pkt[IP].ttl
+				pdict['hdr.ipv4.protocol']=pkt[IP].proto
+				pdict['hdr.ipv4.checksum']=pkt[IP].chksum
+				pdict['hdr.ipv4.src_addr']=pkt[IP].src
+				pdict['hdr.ipv4.dst_addr']=pkt[IP].dst
 
 			if pkt.haslayer(TCP):
-				pdict['tcp.srcPort']=pkt[TCP].sport
-				pdict['tcp.dstPort']=pkt[TCP].dport
-				pdict['tcp.checksum']=pkt[TCP].chksum
+				pdict['hdr.tcp.src_port']=pkt[TCP].sport
+				pdict['hdr.tcp.dst_port']=pkt[TCP].dport
+				pdict['hdr.tcp.checksum']=pkt[TCP].chksum
 
 			if pkt.haslayer(UDP):
-				pdict['udp.srcPort']=pkt[UDP].sport
-				pdict['udp.dstPort']=pkt[UDP].dport
-				pdict['udp.checksum']=pkt[UDP].chksum
+				pdict['hdr.udp.src_port']=pkt[UDP].sport
+				pdict['hdr.udp.dst_port']=pkt[UDP].dport
+				pdict['hdr.udp.checksum']=pkt[UDP].chksum
 			dicts.append(pdict) 
 	return dicts
 
 Pack_formatstring="dIIhhhhhhhhh"
-header='ingress_metadata.ingress_timestamp,ipv4.srcAddr,ipv4.dstAddr,ipv4.ttl,ipv4.protocol,ipv4.checksum,tcp.srcPort,tcp.dstPort,tcp.checksum,udp.srcPort,udp.dstPort,udp.checksum'
+header='ig_intr_md.ingress_mac_tstamp,hdr.ipv4.src_addr,hdr.ipv4.dst_addr,hdr.ipv4.ttl,hdr.ipv4.protocol,hdr.ipv4.checksum,hdr.tcp.src_port,hdr.tcp.dst_port,hdr.tcp.checksum,hdr.udp.src_port,hdr.udp.dst_port,hdr.udp.checksum'
 harr=header.split(',')
 header_loc_map={harr[i]:i for i in range(len(harr))}
 

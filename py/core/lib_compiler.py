@@ -5,10 +5,33 @@ import numpy as np
 
 
 def validate_header_name(header_name):
-	valid_parsed_hdr=["ingress_metadata.ingress_timestamp","ipv4.srcAddr","ipv4.dstAddr","ipv4.protocol","tcp.dstPort","tcp.srcPort","udp.dstPort","udp.srcPort"]
+	valid_parsed_hdr=[
+        'ig_intr_md.ingress_mac_tstamp',
+        'hdr.ipv4.src_addr',
+        'hdr.ipv4.dst_addr',
+        'hdr.ipv4.protocol',
+        'hdr.tcp.src_port',
+        'hdr.udp.src_port',
+        'hdr.tcp.dst_port',
+        'hdr.udp.dst_port',
+        ]
 	aliases={
-		"packets":"ingress_metadata.ingress_timestamp",
-	}
+        "packets":"ig_intr_md.ingress_mac_tstamp",
+        "ingress_metadata.ingress_timestamp":"ig_intr_md.ingress_mac_tstamp",
+        'ipv4.srcAddr':'hdr.ipv4.src_addr',
+        'ipv4.dstAddr':'hdr.ipv4.dst_addr',
+        'ipv4.protocol':'hdr.ipv4.protocol',
+        'tcp.srcPort':'hdr.tcp.src_port',
+        'tcp.dstPort':'hdr.tcp.dst_port',
+        'udp.srcPort':'hdr.udp.src_port',
+        'udp.dstPort':'hdr.udp.dst_port',
+        'ipv4.src_addr':'hdr.ipv4.src_addr',
+        'ipv4.dst_addr':'hdr.ipv4.dst_addr',
+        'tcp.src_port':'hdr.tcp.src_port',
+        'tcp.dst_port':'hdr.tcp.dst_port',
+        'udp.src_port':'hdr.udp.src_port',
+        'udp.dst_port':'hdr.udp.dst_port',
+    }
 	
 	if type(header_name)!=str:
 		raise ValueError("Header field not string?",header_name)
@@ -162,17 +185,17 @@ def find_best_cc_partial_smart(prob_thres, bias_factor, expected_activ, debug=Fa
 def generate_hash_functions(queries, allocate_fn, debug=False):
 	def prep_hash_qids(queries, debug=False):
 		attr_tuples=[
-		("ingress_metadata.ingress_timestamp",),
-		 ("ipv4.dstAddr",),
-		 ("ipv4.dstAddr", "tcp.dstPort"),
-		 ("ipv4.dstAddr", "udp.dstPort"),
-		 ("ipv4.srcAddr",),
-		 ("ipv4.srcAddr", "tcp.srcPort"),
-		 ("ipv4.srcAddr", "udp.srcPort"),
-		 ("tcp.dstPort",),
-		 ("tcp.srcPort",),
-		 ("udp.dstPort",),
-		 ("udp.srcPort",)]
+		 ("ig_intr_md.ingress_mac_tstamp",),
+		 ("hdr.ipv4.dst_addr",),
+		 ("hdr.ipv4.dst_addr", "hdr.tcp.dst_port"),
+		 ("hdr.ipv4.dst_addr", "hdr.udp.dst_port"),
+		 ("hdr.ipv4.src_addr",),
+		 ("hdr.ipv4.src_addr", "hdr.tcp.src_port"),
+		 ("hdr.ipv4.src_addr", "hdr.udp.src_port"),
+		 ("hdr.tcp.dst_port",),
+		 ("hdr.tcp.src_port",),
+		 ("hdr.udp.dst_port",),
+		 ("hdr.udp.src_port",)]
 		q_attr_tuples=sorted(set([ tuple(queries[i]["conditions"][0]["distinct"]) for i in range(len(queries))]))
 		for i in q_attr_tuples:
 			if i not in attr_tuples:
@@ -214,7 +237,11 @@ def generate_hash_functions(queries, allocate_fn, debug=False):
 		hashkey=attr_tuples[i]
 		#sort from large prob to small prob
 		all_queries=sorted(hashfn_actions[hashkey], key=lambda q:q[1][0])
-		max_inv_prob=max([q[1][0] for q in all_queries])
+		if len(all_queries)==0:
+			print("Warning: hashkey %s has no actions." % str(hashkey))
+			max_inv_prob=16
+		else:
+			max_inv_prob=max([q[1][0] for q in all_queries])
 		
 		base=0
 		match_actions=[]

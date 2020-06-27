@@ -363,9 +363,9 @@ control SwitchIngress(
             {% if h1.id<h2.id %}
                 // rules for {{h1.id}} and {{h2.id}} 
                 // coin toss gives {{h1.id}} 
-                ( {% for c in hashes %}{{(c.id==h1.id or c.id==h2.id)|int}} &&& 1w1, {% endfor %} 0 &&& 1w0 ) : actb_select_h_{{h1.id}}_();
+                ( {% for c in hashes %}{{(c.id==h1.id or c.id==h2.id)|int}} &&& 1w1, {% endfor %} 0 &&& 1w1 ) : actb_select_h_{{h1.id}}_();
                 // coin toss gives {{h2.id}} 
-                ( {% for c in hashes %}{{(c.id==h1.id or c.id==h2.id)|int}} &&& 1w1, {% endfor %} 1 &&& 1w0 ) : actb_select_h_{{h2.id}}_();
+                ( {% for c in hashes %}{{(c.id==h1.id or c.id==h2.id)|int}} &&& 1w1, {% endfor %} 1 &&& 1w1 ) : actb_select_h_{{h2.id}}_();
             {% endif %}
             {% endfor %}
             {% endfor %}
@@ -733,7 +733,7 @@ control SwitchIngress(
                 // for now, we mark the ethernet headers for alert. 
                 // Only reporting query ID is enough (query key can be reconstructed from header).
                 hdr.ethernet.src_addr = 233;
-                hdr.ethernet.dst_addr = bit<48> ig_md.h_s_qid;
+                hdr.ethernet.dst_addr = (bit<48>) ig_md.h_s_qid;
             }else{
             	drop();exit;
             }

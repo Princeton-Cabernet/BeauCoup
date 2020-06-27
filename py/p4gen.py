@@ -26,11 +26,23 @@ IR = json.load(open(args.IR_filename,"r"))
 
 hashes, keydefn = lib_p4gen.prep_hashes_keydefn(IR, args.verbose)
 
+if args.verbose:
+    print("Parsed %d hash functions from IR" % len(hashes))
+    print("Parsed %d keydefn from IR" % len(keydefn))
 
+assert(len(keydefn)<=15) # currently the template uses 4-bit keydefn pointer
 
 with open(args.template_filename,'r') as f:
-    t = jinja2.Template(f.read(),  trim_blocks=True, lstrip_blocks=True)
+    template_txt=f.read()
+    if args.verbose:
+        print("Loaded template, %d lines"%(len(template_txt.split("\n"))))
+    t = jinja2.Template(template_txt,  trim_blocks=True, lstrip_blocks=True)
+
+
     
 output = (t.render(hashes=hashes,keydefn=keydefn))
 with open(args.P4_filename, 'w') as f:
     f.write(output)
+    
+if args.verbose:
+    print("Generated P4 source, %d lines. Successfully saved to %s"%(len(output.split("\n")),args.P4_filename))
