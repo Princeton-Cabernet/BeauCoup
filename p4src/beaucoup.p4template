@@ -259,7 +259,10 @@ control SwitchIngress(
         inout ingress_intrinsic_metadata_for_tm_t ig_intr_tm_md) {
          
         action drop() {
-            ig_intr_dprsr_md.drop_ctl = 0x1; // Drop packet.
+            ig_intr_dprsr_md.drop_ctl = 0x1; // Mark packet for dropping after ingress.
+        }
+        action drop_and_exit(){
+            drop();exit;  // Stop pipeline processing, and drop packet.
         }
         action nop() {
         }
@@ -316,9 +319,9 @@ control SwitchIngress(
         action prepare_timestamp(){
             ig_md.current_timestamp=(bit<32>)ig_intr_md.ingress_mac_tstamp;
         }
-        Hash<bit<1>>(HashAlgorithm_t.RANDOM) rng;
+        Random< bit<1> >() rng;
         action prepare_random_1_bit(){
-            ig_md.random_1_bit = rng.get({ig_md.current_timestamp,ig_md.current_timestamp});
+            ig_md.random_1_bit = rng.get();
         }
 
         //after having the hash, let's do tiebreaking
@@ -669,8 +672,6 @@ control SwitchIngress(
 
 
         apply {
-            //For debugging with mirrored traffic, alert packets are routed back to sender
-            reflect();
 
 {% for h in hashes %}
             calc_hash_{{h.id}}_a();
@@ -689,7 +690,7 @@ control SwitchIngress(
 
             // no coupon? stop processing
             if(ig_md.h_s_activated==0){
-                drop();exit;
+                drop_and_exit();
             }
             // now we do have coupon, collect it...
 
@@ -729,15 +730,21 @@ control SwitchIngress(
 
             //finally, check coupon count: do we have enough coupons to send an alert?
             if(ig_md.coupon_total_activated == ig_md.h_s_ctotal){
-                // add a flag, send to mirror session, etc
-                // for now, we mark the ethernet headers for alert. 
+                // Report a query key: add a flag, send to control plane / mirror session, etc
+                
+                // For now, we mark the ethernet headers for alert. 
                 // Only reporting query ID is enough (query key can be reconstructed from header).
-                hdr.ethernet.src_addr = 233;
-                hdr.ethernet.dst_addr = (bit<48>) ig_md.h_s_qid;
-            }else{
-            	drop();exit;
+                hdr.ethernet.dst_addr[7:0] = ig_md.h_s_qid;
+                hdr.ethernet.src_addr[7:0] = 233;
+                //hdr.ethernet.src_addr[47:8] = 0;
+                //hdr.ethernet.dst_addr[47:8] = 0;
+                
+                //For debugging with mirrored traffic, alert packets are routed back to sender
+                reflect();
+            } else {
+                drop_and_exit();
             }
-            
+           
         }
 }
 
