@@ -19,11 +19,18 @@ def numToDottedQuad(n):
 
 def parse_pcap(FN, count=-1, debug=False):
 	dicts=[]
+	i=0
 	with PcapReader(FN) as pcap_reader:
-		iterator=pcap_reader.read_all(count=count)
-		if debug:
-			iterator=tqdm.tqdm(iterator)
-		for pkt in iterator:
+		#iterator=pcap_reader.read_all(count=count)
+		#if debug:
+		#	iterator=tqdm.tqdm(iterator)
+		for pkt in pcap_reader:
+			i+=1
+			if i>count:break
+			if i%10000==0:
+				if debug:
+					print('Progress: %d'%i)
+            
 			pdict={}
 			pdict['ingress_metadata.ingress_timestamp']=pkt.time
 			if pkt.haslayer(IP):
@@ -42,7 +49,6 @@ def parse_pcap(FN, count=-1, debug=False):
 				pdict['udp.srcPort']=pkt[UDP].sport
 				pdict['udp.dstPort']=pkt[UDP].dport
 				pdict['udp.checksum']=pkt[UDP].chksum
-
 			dicts.append(pdict) 
 	return dicts
 

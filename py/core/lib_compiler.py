@@ -48,7 +48,7 @@ def validate_header(queries):
 def parse_file(filename="query.yaml", debug=False):
 	with open(filename,"r") as f:
 		cont=f.read()
-	queries=yaml.load(cont)
+	queries=yaml.safe_load(cont)
 	if debug:
 		print("validating YAML structure...")
 	queries=validate_yaml(queries)

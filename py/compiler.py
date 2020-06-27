@@ -24,6 +24,9 @@ queries = lib_compiler.parse_file(args.query_filename, args.verbose)
 
 qid_name_lookup = {q["qid"]:q["name"] for q in queries}
 
+if args.gamma>1.0 or args.gamma<=0:
+    raise ValueError("Illegal gamma value, should be positive and smaller than one:",args.gamma)
+
 allocate_fn = lambda query: args.gamma/len(queries)
 
 hash_functions = lib_compiler.generate_hash_functions(queries, allocate_fn, args.verbose)
@@ -31,7 +34,8 @@ hash_functions = lib_compiler.generate_hash_functions(queries, allocate_fn, args
 IR = {
     "hash_functions":hash_functions,
     "queries":queries,
-    "qid_name_lookup":qid_name_lookup
+    "qid_name_lookup":qid_name_lookup,
+    "gamma_specified":args.gamma
 }
 
 json.dump(IR, open(args.IR_filename,"w"))

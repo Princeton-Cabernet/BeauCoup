@@ -95,11 +95,12 @@ class TopK:
 	def topk(self):
 		return self.counter.most_common(self.K)
 class NS_UM:
-	def __init__(self,R=4,C=1024,L=16,Heapsize=20,pl0=0.01, seedbase=0):
+	def __init__(self,R=4,C=1024,L=16,Heapsize=20,pspec=0.01, seedbase=0):
 		self.R=R
 		self.C=C
 		self.L=L
-
+        
+		pl0=pspec/L/C # approximately equal share across all layers
 		self.p=[min(1,pl0*(2**i)) for i in range(L)]
 		#self.p=[pl0 for i in range(L)]
 		# could also use same P
@@ -162,7 +163,7 @@ class NS_UM:
 	
 	def countDistinct(self):
 		return self.calcG(np.sign)
- 
+
 def run_NSUM(Trace, threshold=1000, repeat=20, p_configs=[1,1e-1,1e-2,1e-3,1e-4,1e-5,1e-6,1e-7], debug=False):
 	activation_count={}
 	for p in (p_configs):
@@ -173,7 +174,7 @@ def run_NSUM(Trace, threshold=1000, repeat=20, p_configs=[1,1e-1,1e-2,1e-3,1e-4,
 		if debug:
 			iterator=tqdm.tqdm(iterator)
 		for seedbase in iterator:
-			obj=NS_UM(pl0=p, seedbase=seedbase)
+			obj=NS_UM(pspec=p, seedbase=seedbase)
 			gt=set()
 			memAccess=[]
 			for i in range(len(Trace)):

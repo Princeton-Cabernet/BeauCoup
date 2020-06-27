@@ -27,10 +27,10 @@ def prep_hashes_keydefn(IR, debug=False):
 	             "ctot":ma['at_least_coupons'],
 	             "kdf":qkeys[tuple(ma['qkey'])]}
 	        )
-		def gen_rnd():
-			a=random.randint(10000,60000)
-			w=random.randint(1,16)
-			return "16w%d,%dw0,  "%(a,w)
+	    def gen_rnd():
+	    	a=random.randint(10000,60000)
+	    	w=random.randint(1,16)
+	    	return "16w%d,%dw0,  "%(a,w)
 	    hashes.append({
 	        "id":i+1,
 	        "fields":gen_rnd()+ ",".join(hf['key']),
