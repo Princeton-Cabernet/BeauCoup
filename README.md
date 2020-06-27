@@ -2,6 +2,8 @@
 
 This repository hosts the codebase accompanying the SIGCOMM 2020 paper *BeauCoup: Answering Many Network Traffic Queries, One Memory Update at a Time*. The repository contains several components, corresponding to different parts of the paper.
 
+To install python dependencies, please run `pip3 install -U pip`, then `pip3 install -r py/requirements.txt`.
+
 ## Query Syntax
 
 We use YAML to express distinct counting queries:

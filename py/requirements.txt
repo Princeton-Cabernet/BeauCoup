@@ -1,0 +1,9 @@
+pip>=19
+crcmod
+jinja2
+numpy
+pyyAML
+scapy>=2.4
+scipy
+tqdm
+pydistinct
