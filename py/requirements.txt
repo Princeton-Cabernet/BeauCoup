@@ -7,3 +7,4 @@ scapy>=2.4
 scipy
 tqdm
 pydistinct
+matplotlib

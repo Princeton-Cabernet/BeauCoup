@@ -4,6 +4,9 @@ import scipy.stats
 import crcmod
 import random
 import tqdm
+import pickle
+import matplotlib
+import matplotlib.pyplot as plt
 
 # Part 1: simulate the behavior of BeauCoup Coupon Collectors efficiently, using geometric sampling
 
@@ -277,3 +280,28 @@ def run_CC(Trace, threshold=1000, repeat=20, p_configs=[1,1e-1,1e-2,1e-3,1e-4,1e
 		activation_count[(p,threshold)]=samples
 	return activation_count
 
+
+
+# Plotting
+def parse_memA_acc(FN):
+    activation_count=pickle.load(open(FN,"rb"))
+    memA_list=[]
+    acc_list=[]
+    for p,th in activation_count.keys():
+        x=activation_count[(p,th)]
+        s=[i[0] for i in x]
+        memA=np.mean([i[1] for i in x])
+        relAcc=mean_rel_err(s,th)
+
+        memA_list.append(memA)
+        acc_list.append(relAcc)
+    return memA_list,acc_list
+
+def plot_memA_acc(memA, acc, FN):
+    fig, ax = plt.subplots()
+    ax.semilogx(memA, acc, '-x')
+    #
+    plt.xlabel("Average memory access per packet")
+    plt.ylabel("Mean Relative Error")
+    ax.yaxis.set_major_formatter( matplotlib.ticker.FuncFormatter(lambda x, pos: '%d%%' % (x*100, )) )
+    plt.savefig(FN)

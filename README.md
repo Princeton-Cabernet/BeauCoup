@@ -69,13 +69,16 @@ The simulator also supports calculating the ground truth query output against th
 
 We run different algorithms for counting distinct IP pairs and compare their accuracy under sub-constant memory access constraint. Besides Coupon Collectors (`CC`), we implemented NitroSketch-UnivMon (`NSUM`) and Sampling (`Sampling`).
 
-The following command runs the Sampling algorithm to count until 1000 distinct pairs, repeat 20 times with different random seeds, and generates a report:
-`python3 BeauCoup/py/singlequery.py --threshold 1000 --repeat 100 /path/to/trace.npy /path/to/output.npz Sampling 1.0 0.1 0.01 0.001`
+The following command runs the Sampling algorithm to count until 1000 distinct pairs, repeat 20 times with different random seeds, and generates a report (pickle file):
+`python3 BeauCoup/py/singlequery.py --threshold 1000 --repeat 100 /path/to/trace.npy /path/to/output.pkl Sampling 1.0 0.1 0.01 0.001`
 The algorithm can be changed to `CC`/`NSUM`.
 
 Here, we specify a list of gamma values `1.0 0.1 0.01 0.001` corresponding to average per-packet memory access limit.
 
 Note that the parameter specified here does not directly reflect the number of actual memory access made by the algorithm, and is only used for reference. In the evaluation, we scale the actual number of memory access recorded in the report to more accurately reflect the number of memory words accessed.
+
+To parse and plot the pickle files, please run `python3 BeauCoup/py/plot_singlequery.py /path/to/output.pkl /path/to/plot.png`. This loads and plots a single accuracy vs memory access profile curve.
+
 
 # Citing BeauCoup
 
