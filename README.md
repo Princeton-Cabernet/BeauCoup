@@ -41,6 +41,11 @@ The P4 code geneator takes in an Intermediate Representation and substantiate th
 Please run the following command to generate the P4 program:
 `python3 BeauCoup/py/p4gen.py /path/to/IR.json BeauCoup/p4src/beaucoup.p4template /path/to/beaucoup.p4`
 
+To compile the P4 program and inspect hardware resource utilization on the Tofino switch, you need to use Barefoot P4 SDE (version 9.0.0 or greater).  
+* Run `bf-p4c -g beaucoup.p4` to compile. The `-v` flag is necessary for additional visualization.
+* Run `p4i -w beaucoup.tofino`, then open `http://localhost:3000/` to inspect. If you're running `p4i` on a server under CLI, you may need to add the `--no-browser` flag.
+
+The results are available under "Dashboard" -> "Resource Summary".
 
 ## Evaluation
 
