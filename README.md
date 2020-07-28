@@ -59,11 +59,28 @@ Please run the following command to preprocess the trace PCAP:
 We use a python-based simulator to execute BeauCoup coupon collectors and generate query reports. The following command takes in an intermediate representation, runs the corresponding hash function mappings, and generates reports (saved in numpy compressed format):
 `python3 BeauCoup/py/simulator.py --seed=1 /path/to/IR.json /path/to/trace.npy /path/to/reports.npz`
 
-The simulator should be run against multiple random seeds.
-
 The simulator also supports calculating the ground truth query output against the given trace. This is required for evaluating the accuracy of simulation runs. Please use the following command to calculate the ground truth.
 `python3 BeauCoup/py/simulator.py --groundtruth /path/to/IR.json /path/to/trace.npy /path/to/groundtruth.npz`
 
+#### Repeated runs
+
+The simulator should be run against multiple random seeds and multiple configurations. Attached here is a simple bash script to run multiple such trials and save their outputs.
+```bash
+for gamma in `seq 0.1 0.1 0.9;` do
+  python3 BeauCoup/py/compiler.py --gamma=$gamma queries.yaml IR_${gamma}.json
+  for seed in `seq 1 16`; do
+	 python3 BeauCoup/py/simulator.py --seed=$seed IR_${gamma}.json /path/to/trace.npy outputs/report_gamma_${gamma}_seed_${seed}.npz
+  done
+done
+```
+However, as it takes quite a while to run the simulations, we recommend running them in parallel.
+
+#### Plotting
+
+We attached a script to parse and analyze the reports from the simulatoin runs. To parse the results from the above example script, please run:
+`python3 BeauCoup/py/plot_simulator.py /path/to/IR.json  /path/to/groundtruth.npz  /path/to/plot.png outputs/report_gamma_{gamma}_seed_{seed}.npz   --seed_begin=1 --seed_end=16 --gamma_list=0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9 `
+
+The analysis script need the ground truth file and one of the IR file (please make sure they use the same query/trace, consistent with the experiment runs). It will calculate and plot the mean relative errors experienced by all queries, with gamma on x-axis and mean relative error on y-axis. Add the `--separate` flag to plot each query individually (instead of plot all queries together).
 
 ### Comparing distinct counters
 
@@ -73,11 +90,13 @@ The following command runs the Sampling algorithm to count until 1000 distinct p
 `python3 BeauCoup/py/singlequery.py --threshold 1000 --repeat 100 /path/to/trace.npy /path/to/output.pkl Sampling 1.0 0.1 0.01 0.001`
 The algorithm can be changed to `CC`/`NSUM`.
 
-Here, we specify a list of gamma values `1.0 0.1 0.01 0.001` corresponding to average per-packet memory access limit.
+Here, we specify a list of gamma values `1.0 0.1 0.01 0.001` corresponding to average per-packet memory access limit. This is only used for suggestion, and we later parse the output report to recover the actual memory access made by the algorithm.
 
-Note that the parameter specified here does not directly reflect the number of actual memory access made by the algorithm, and is only used for reference. In the evaluation, we scale the actual number of memory access recorded in the report to more accurately reflect the number of memory words accessed.
+#### Plotting
 
-To parse and plot the pickle files, please run `python3 BeauCoup/py/plot_singlequery.py /path/to/output.pkl /path/to/plot.png`. This loads and plots a single accuracy vs memory access profile curve.
+To parse and plot the pickle files, please run `python3 BeauCoup/py/plot_singlequery.py /path/to/output.pkl /path/to/plot.png`. This loads and plots a single accuracy profile curve, with average memory access per packet on x-axis and mean relative error on y-axis. 
+
+The memory access unit for `NSUM` is per sketch entry write (one word per write), for `Sampling` is per packet (accessing 2 words to write each IP pair), and for `BeauCoup` is per coupon (accessing 3 words to collect a coupon). Please scale accordingly when overlaying the different curves for comparison.
 
 
 # Citing BeauCoup

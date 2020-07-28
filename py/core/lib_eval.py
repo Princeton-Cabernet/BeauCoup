@@ -7,6 +7,9 @@ import collections
 import crcmod
 import struct
 import socket
+import json
+import matplotlib.pyplot as plt
+import matplotlib
 
 def dottedQuadToNum(ip):
 	"convert decimal dotted quad string to long integer"
@@ -273,5 +276,93 @@ def groundtruth_run(TraceFN, OutFN, IR, debug=False):
 	        GT_distinct_count[i][j]=len(GT_distinct_sets[j][qkey])
 	print('Done. Saving output...')
 	np.save(OutFN, GT_distinct_count)       
+    
+    
+## Evaluation plotting
+def parse_simulation_results(IR_FN, GT_FN, list_gamma, list_seeds, reports_npz_path_format, debug=False):
+    if debug:
+        print("Loading IR from %s, ground truth from %s." % (IR_FN, GT_FN))
+    GT_Distinct=np.load(GT_FN, mmap_mode='r')
+    IR=json.load(open(IR_FN,"r"))
+    queries=IR["queries"]
+    if len(queries) != GT_Distinct.shape[1]:
+        raise ValueError("Number of queries in IR (%d) mismatch from ground truth file (%d)" % (len(queries) , GT_Distinct.shape[1]))
+    
+    def format_FN(gamma,seed):
+        return reports_npz_path_format.replace("{gamma}",gamma).replace("{seed}",seed)
+    
+    if debug:
+        print("Batch loading reports.npz, using format string: %s"%(reports_npz_path_format))
+        print("(Example: from %s)" % (format_FN(list_gamma[0], list_seeds[0])))
+    
+    def analyze_log(TrialFN):
+        arr=np.load(TrialFN, mmap_mode='r')
+        event_log_finish=arr['event_log_finish'] # for query accuracy analysis
+        #event_log_first=arr['event_log_first']  # for memory space analysis
+        #total_coupons=arr['total_coupons']      # for memory access analysis
+        trial_finish=[[] for q in queries]
+        for idx in range(len(event_log_finish)):
+            i,qid=event_log_finish[idx]
+            gt=GT_Distinct[i][qid]
+            trial_finish[qid].append(gt)
+        mean_rel_error_dict={}
+        for QID in range(len(queries)):
+            T=queries[QID]['conditions'][0]['exceeds']
+            vect=trial_finish[qid]
+            if len(vect)<5:
+                raise ValueError("Too few reports for query %d to calculate a meaningful mean relative error! File:%s. (Use a longer trace with >10M packets?)" %(QID,TrialFN))
+            rel_err=np.abs(np.array(vect)-T)/T
+            mean_rel_error_dict[QID]=np.mean(rel_err)
+        return mean_rel_error_dict
+    
+    gamma_results={}
+    for gamma in list_gamma:
+        gamma_results[gamma]=[]
+        if debug: print('Loading gamma=%s'%gamma)
+        iterator=list_seeds
+        if debug:
+            iterator=tqdm.tqdm(iterator)
+        for seed in iterator:
+            TrialFN=format_FN(gamma,seed)
+            gamma_results[gamma].append(analyze_log(TrialFN))
+    return gamma_results, len(queries)
 
-
+def plot_simulation_results(gamma_results, maxQ, FN, separate_queries=False, debug=False):
+    list_gamma = gamma_results.keys()
+    perQ_error_samples={gamma:[[] for qid in range(maxQ)] for gamma in list_gamma}
+    for gamma in list_gamma:
+        for mean_rel_error_dict in gamma_results[gamma]:
+            for qid,error in mean_rel_error_dict.items():
+                perQ_error_samples[gamma][qid].append(error)
+    
+    # median within per Q, then avg across Q
+    allQ_error_each_gamma=[
+        [np.median(perQ_error_samples[gamma][qid]) for qid in range(maxQ)]
+        for gamma in list_gamma
+    ]
+    xrange=range(1,len(list_gamma)+1)
+    
+    fig, ax = plt.subplots()
+    if not separate_queries:
+        # violin plot, average accuracy across all Q 
+        plt.violinplot(allQ_error_each_gamma, showmeans=True)
+        avgd_across_q=[np.mean(x) for x in allQ_error_each_gamma]
+        plt.plot(xrange, avgd_across_q)
+        plt.xticks(xrange,list_gamma)
+        if debug: 
+            print("Mean Relative Error, averaged across queries: %s" % avgd_across_q)
+            print("(Gamma=%s)"%list_gamma)
+    else:
+        # one line for each query
+        for qid in range(maxQ):
+            perQ_error_each_gamma=[np.median(perQ_error_samples[gamma][qid]) for gamma in list_gamma]
+            plt.plot(list_gamma, perQ_error_each_gamma,label='Q%d'%qid) 
+            if debug: 
+                print("Mean Relative Error, query #%s: %s" % (qid, perQ_error_each_gamma))
+        plt.legend(loc="lower left",ncol=4)
+        if debug: 
+            print("(Gamma=%s)"%list_gamma)
+    plt.xlabel("Total memory access per packet limit ($Gamma$)")
+    plt.ylabel("Mean Relative Error")
+    ax.yaxis.set_major_formatter( matplotlib.ticker.FuncFormatter(lambda x, pos: '%d%%' % (x*100, )) )
+    plt.savefig(FN)
