@@ -32,6 +32,13 @@ The Intermediate Representation contains a list of hash function specifications,
 The `--gamma` parameter adjusts per-packet memory access by limiting the expected number of coupons collected per packet. Use a smaller `--gamma` to further reduce memory access.
 
 
+#### Format
+The IR has three parts. 
+- `queries` includes the original query set (parsed into a standardized representation after aliasing).
+- `qid_name_lookup` is a dictionary from query ID to name.
+- `gamma_specified` is the compilation parameter.
+- `hash_functions` includes one hash function lookup table for each attribute. Each entry in the lookup table represents one coupon, with a probability, its query ID, this coupon's ID, the number of total coupons, and the number of required coupons. 
+
 ## P4 code generation
 
 The BeauCoup P4 template program is available in `p4src/`.
@@ -59,6 +66,16 @@ Please run the following command to preprocess the trace PCAP:
 `python3 py/trace_prep.py /path/to/equinix-nyc.dirA.20180315-130000.UTC.anon.pcap /path/to/caida0.npy`
 
 
+#### Format
+The output numpy file has 12 columns, including:
+- Col 0: Timestamp (float128)
+- Col 1-5: IPv4 Source/Destination (uint32), TTL/Protocol/Checksum (uint16)
+- Col 6-8: TCP Source/Destination port, checksum (uint16)
+- Col 9-11: UDP Source/Destination port, checksum (uint16)
+
+Each line represents one packet. (Invalid headers are filled in with the unsigned -1 (65535 or 2^32-1), which might overlap with port 65535 or IP 255.255.255.255.)
+
+
 ### Run BeauCoup Simulator
 
 We use a python-based simulator to execute BeauCoup coupon collectors and generate query reports. The following command takes in an intermediate representation, runs the corresponding hash function mappings, and generates reports (saved in numpy compressed format):
@@ -66,6 +83,15 @@ We use a python-based simulator to execute BeauCoup coupon collectors and genera
 
 The simulator also supports calculating the ground truth query output against the given trace. This is required for evaluating the accuracy of simulation runs. Please use the following command to calculate the ground truth.
 `python3 BeauCoup/py/simulator.py --groundtruth /path/to/IR.json /path/to/trace.npy /path/to/groundtruth.npz`
+
+#### Format
+The report includes three parts.
+- `event_log_first` is a list of `packet index, query ID` tuples, representing when a coupon collector is first allocated for a particular key of a query (i.e., this key collected the first coupon). 
+- `event_log_finish` is a list of `packet index, query ID` tuples, representing when a coupon collector has collected enough coupons for the first time (i.e., time to send out alerts).
+- `total_coupons` is a 1-D array with only 0/1 entries, referring to whether each packet collected one coupon or no coupon.
+
+The ground truth is a 2-D array with each row representing a packet and each column representing a query. Each entry contains a number that shows, "for this query, given the key represented by this packet, the number of total distinct attributes seen for this key (since the beginning of the trace)".
+
 
 #### Repeated runs
 
@@ -96,6 +122,9 @@ The following command runs the Sampling algorithm to count until 1000 distinct p
 The algorithm can be changed to `CC`/`NSUM`.
 
 Here, we specify a list of gamma values `1.0 0.1 0.01 0.001` corresponding to average per-packet memory access limit. This is only used for suggestion, and we later parse the output report to recover the actual memory access made by the algorithm.
+
+#### Format
+The report pickle file contains a dictionary indexed by `gamma, threshold`. Each dictionary item is a list of `numDistinct, memAccess`, where `numDistinct` represents the actual number of distinct items seen when the algorithm's estimate first exceeds `threshold`, and `memAccess` is the average memory access per packet.
 
 #### Plotting
 
