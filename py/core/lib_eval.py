@@ -20,20 +20,22 @@ def numToDottedQuad(n):
 	return socket.inet_ntoa(struct.pack('>L',n))
 
 
-def parse_pcap(FN, count=-1, debug=False):
-	dicts=[]
+Pack_formatstring="dIIhhhhhhhhh"
+header='ig_intr_md.ingress_mac_tstamp,hdr.ipv4.src_addr,hdr.ipv4.dst_addr,hdr.ipv4.ttl,hdr.ipv4.protocol,hdr.ipv4.checksum,hdr.tcp.src_port,hdr.tcp.dst_port,hdr.tcp.checksum,hdr.udp.src_port,hdr.udp.dst_port,hdr.udp.checksum'
+harr=header.split(',')
+header_loc_map={harr[i]:i for i in range(len(harr))}
+
+def parse_pcap_into_npy(FN, count=-1, debug=False):
 	i=0
+	packets_numerical=[]
+	if count==-1: count=1e100
 	with PcapReader(FN) as pcap_reader:
-		#iterator=pcap_reader.read_all(count=count)
-		#if debug:
-		#	iterator=tqdm.tqdm(iterator)
+		i+=1
 		for pkt in pcap_reader:
-			i+=1
 			if i>count:break
 			if i%10000==0:
 				if debug:
 					print('Progress: %d'%i)
-            
 			pdict={}
 			pdict['ig_intr_md.ingress_mac_tstamp']=pkt.time
 			if pkt.haslayer(IP):
@@ -52,56 +54,36 @@ def parse_pcap(FN, count=-1, debug=False):
 				pdict['hdr.udp.src_port']=pkt[UDP].sport
 				pdict['hdr.udp.dst_port']=pkt[UDP].dport
 				pdict['hdr.udp.checksum']=pkt[UDP].chksum
-			dicts.append(pdict) 
-	return dicts
-
-Pack_formatstring="dIIhhhhhhhhh"
-header='ig_intr_md.ingress_mac_tstamp,hdr.ipv4.src_addr,hdr.ipv4.dst_addr,hdr.ipv4.ttl,hdr.ipv4.protocol,hdr.ipv4.checksum,hdr.tcp.src_port,hdr.tcp.dst_port,hdr.tcp.checksum,hdr.udp.src_port,hdr.udp.dst_port,hdr.udp.checksum'
-harr=header.split(',')
-header_loc_map={harr[i]:i for i in range(len(harr))}
-
-# line generator, for saving CSV:
-def to_line(p):
-	line=[]
-	for h in harr:
-		if h not in p:
-			line.append(-1)
-		else:
-			line.append(p[h])
-	return ",".join([str(i) for i in line])
-
-
-def prep_npy(dicts, debug=False):
-	arr=np.zeros((len(dicts)),dtype=
-		np.dtype('f16,u4,u4,i2,i2,i2,i2,i2,i2,i2,i2,i2')
+			def to_list(p):
+				line=[]
+				for h in harr:
+					if h not in p:
+						line.append(-1)
+					else:
+						line.append(p[h])
+				#timestamp
+				line[0]=np.float128(line[0])
+				#ip
+				if line[1]!=-1:
+					line[1]=dottedQuadToNum(line[1])
+				if line[2]!=-1:
+					line[2]=dottedQuadToNum(line[2])
+				#everything else
+				for i in range(3,12):
+					line[i]=int(line[i])
+				return line
+			packets_numerical.append(tuple(to_list(pdict)))
+	# convert to np array
+	if debug:
+		print('Parsed %d packets. Allocating numpy ndarray...' % i)
+	arr=np.zeros((len(packets_numerical)),dtype=
+		np.dtype('f16,u4,u4,u2,u2,u2,u2,u2,u2,u2,u2,u2')
 	)
 	if debug:
 		print('Allocated nparray shape=%s' % arr.shape)
-
-	for i,pdict in zip(range(len(dicts)),dicts):
-		line=to_line(pdict)
-		larr=line.split(',')
-		arr[i][0]=np.float128(larr[0])
-		if larr[1]=='-1':
-			arr[i][1]=-1
-		else:
-			arr[i][1]=dottedQuadToNum(larr[1])
-		if larr[2]=='-1':
-			arr[i][2]=-1
-		else:
-			arr[i][2]=dottedQuadToNum(larr[2])
-		
-		arr[i][3]=int(larr[3])
-		arr[i][4]=int(larr[4])
-		arr[i][5]=int(larr[5])
-		arr[i][6]=int(larr[6])
-		arr[i][7]=int(larr[7])
-		arr[i][8]=int(larr[8])
-		arr[i][9]=int(larr[9])
-		arr[i][10]=int(larr[10])
-		arr[i][11]=int(larr[11])
+	for i in range(len(packets_numerical)):
+		arr[i]=packets_numerical[i]
 	return arr
-
 
 def load_trace_npy(FN, use_mmap=True):
 	if use_mmap:

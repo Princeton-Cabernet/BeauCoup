@@ -19,8 +19,6 @@ parser.add_argument("-v","--verbose", action="store_true", help="Show additional
 
 args = parser.parse_args()
 
-dicts = lib_eval.parse_pcap(args.PCAP_filename, args.count, args.verbose)
-
-nparray = lib_eval.prep_npy(dicts, args.verbose)
+nparray = lib_eval.parse_pcap_into_npy(args.PCAP_filename, args.count, args.verbose)
 
 np.save(args.npy_filename, nparray)
