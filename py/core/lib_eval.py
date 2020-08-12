@@ -30,8 +30,8 @@ def parse_pcap_into_npy(FN, count=-1, debug=False):
 	packets_numerical=[]
 	if count==-1: count=1e100
 	with PcapReader(FN) as pcap_reader:
-		i+=1
 		for pkt in pcap_reader:
+			i+=1
 			if i>count:break
 			if i%10000==0:
 				if debug:
