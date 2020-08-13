@@ -57,7 +57,7 @@ def parse_pcap_into_npy(FN, count=-1, debug=False):
 			def to_list(p):
 				line=[]
 				for h in harr:
-					if h not in p:
+					if (h not in p) or (p[h]==None):
 						line.append(-1)
 					else:
 						line.append(p[h])
