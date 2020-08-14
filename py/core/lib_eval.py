@@ -20,7 +20,7 @@ def numToDottedQuad(n):
 	return socket.inet_ntoa(struct.pack('>L',n))
 
 
-Pack_formatstring="dIIhhhhhhhhh"
+Pack_formatstring="dIIHHHHHHHHH"
 header='ig_intr_md.ingress_mac_tstamp,hdr.ipv4.src_addr,hdr.ipv4.dst_addr,hdr.ipv4.ttl,hdr.ipv4.protocol,hdr.ipv4.checksum,hdr.tcp.src_port,hdr.tcp.dst_port,hdr.tcp.checksum,hdr.udp.src_port,hdr.udp.dst_port,hdr.udp.checksum'
 harr=header.split(',')
 header_loc_map={harr[i]:i for i in range(len(harr))}
