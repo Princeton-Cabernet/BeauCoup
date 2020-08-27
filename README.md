@@ -1,6 +1,6 @@
 # BeauCoup: Approximate Distinct Counting with Limited Memory Access
 
-This repository hosts the codebase accompanying the SIGCOMM 2020 paper *BeauCoup: Answering Many Network Traffic Queries, One Memory Update at a Time*. The repository contains several components, corresponding to different parts of the paper.
+This repository hosts the codebase accompanying the SIGCOMM 2020 paper [*BeauCoup: Answering Many Network Traffic Queries, One Memory Update at a Time*](https://doi.org/10.1145/3387514.3405865). The repository contains several components, corresponding to different parts of the paper.
 
 To install python dependencies, please run `pip3 install -U pip`, then `pip3 install -r py/requirements.txt`.
 
