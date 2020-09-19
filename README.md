@@ -65,6 +65,7 @@ To improve performance, we pre-parse the trace packets and store the packet head
 Please run the following command to preprocess the trace PCAP:
 `python3 py/trace_prep.py /path/to/equinix-nyc.dirA.20180315-130000.UTC.anon.pcap /path/to/caida0.npy`
 
+The trace pre-processing is memory intensive as it loads the entire trace to memory first. Please run with a smaller `--count` parameter when running on machines with small (<10GB) memory and large (>100MB) traces.
 
 #### Format
 The output numpy file has 12 columns, including:
@@ -146,6 +147,8 @@ If you find the code useful, please consider citing:
     }
 
 # License
-The project source code, including the P4 data plane program template, is released under the **AGPLv3 license**. 
+Copyright 2020 Xiaoqi Chen, Princeton University.
 
-If you modify the code and make the functionality of the code available to users interacting with it remotely through a computer network, for example through a P4 program, you must make the modified source code feely available under the same AGPLv3 license.
+The project source code, including the P4 data plane program template, is released under the **[GNU Affero General Public License v3](https://www.gnu.org/licenses/agpl-3.0.html)**. 
+
+If you modify the code and make the functionality of the code available to users interacting with it remotely through a computer network, for example through a P4 program, you must make the modified source code freely available under the same AGPLv3 license.
