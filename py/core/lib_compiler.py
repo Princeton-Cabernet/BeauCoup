@@ -201,6 +201,7 @@ def generate_hash_functions(queries, allocate_fn, debug=False):
 		for i in q_attr_tuples:
 			if i not in attr_tuples:
 				attr_tuples.append(i)
+		attr_tuples=[tuple(sorted(i)) for i in attr_tuples]
 		if debug:
 			print("Preparing %d hash functions for unique attribute tuples: %s" %(len(attr_tuples),attr_tuples))
 		
