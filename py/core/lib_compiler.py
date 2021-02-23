@@ -46,6 +46,8 @@ def validate_header_name(header_name):
 
 def validate_yaml(queries):
 	# syntax check
+	if queries == None:
+		return []
 	for i in range(len(queries)):
 		assert(type(queries[i]["name"])==str)
 		assert(type(queries[i]["key"]) in [str,list])
@@ -83,10 +85,9 @@ def parse_file(filename="query.yaml", debug=False):
 		print("done.")
 		print("validating probability...")
 	max_prob=0.99 
-	per_query_prob=max_prob/len(queries)
 	for q in queries:
 		sum_prob=sum([1.0/c["exceeds"] for c in q["conditions"]])
-		if sum_prob>per_query_prob:
+		if sum_prob>max_prob/len(queries):
 			print("Warning, query threshold likely too low for:",q)
 	if debug:
 		print("done.")
