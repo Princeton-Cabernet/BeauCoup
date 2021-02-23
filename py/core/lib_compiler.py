@@ -261,7 +261,7 @@ def generate_hash_functions(queries, allocate_fn, debug=False):
 				match_actions.append((match_range, act))
 				base+=slots
 		if debug:
-			print("Allocated hash function for attr tuple=%s, total matching entries=%d (out of %d possible), utilization=%.02f percent"%(hashkey,base,max_inv_prob,base*100/max_inv_prob))
+			print("Allocated hash function #%d for attr tuple=%s, total matching entries=%d (out of %d possible), utilization=%.02f percent"%(i,hashkey,base,max_inv_prob,base*100/max_inv_prob))
 		assert(base*100/max_inv_prob<=100)
 		hash_functions.append({
 			"key":hashkey,
