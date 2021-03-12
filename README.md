@@ -67,6 +67,18 @@ Please run the following command to preprocess the trace PCAP:
 
 The trace pre-processing is memory intensive as it loads the entire trace to memory first. Please run with a smaller `--count` parameter when running on machines with small (<10GB) memory and large (>100MB) traces.
 
+#### Concatenation
+The original paper's experiment uses 5 minutes of CAIDA trace (`130000` to `130004`); a shorter trace might not generate enough reports for the example queries.
+
+To concatenate shorter parsed trace files into a longer trace file, please run the following:
+```
+import numpy as np
+trace_filenames=['caida0.npy','caida1.npy','caida2.npy','caida3.npy','caida4.npy']
+output_filename='caida_5min.npy'
+traces=[np.load(filename,mmap_mode='r') for filename in trace_filenames]
+np.save(output_filename, np.concatenate(traces))
+```
+
 #### Format
 The output numpy file has 12 columns, including:
 - Col 0: Timestamp (float128)
