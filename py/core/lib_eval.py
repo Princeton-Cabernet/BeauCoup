@@ -292,7 +292,7 @@ def parse_simulation_results(IR_FN, GT_FN, list_gamma, list_seeds, reports_npz_p
             T=queries[QID]['conditions'][0]['exceeds']
             vect=trial_finish[QID]
             if len(vect)<5:
-                raise ValueError("Too few reports for query %d to calculate a meaningful mean relative error! File:%s. (Use a longer trace with >10M packets?)" %(QID,TrialFN))
+                raise ValueError("Too few reports for query %d to calculate a meaningful mean relative error! File:%s. (Use a longer trace with >100M packets?)" %(QID,TrialFN))
             rel_err=np.abs(np.array(vect)-T)/T
             mean_rel_error_dict[QID]=np.mean(rel_err)
         return mean_rel_error_dict
