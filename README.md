@@ -56,7 +56,7 @@ The results are available under "Dashboard" -> "Resource Summary".
 
 ## Evaluation
 
-The evaluation experiments use [The CAIDA Anonymized Internet Traces](https://www.caida.org/data/passive/passive_dataset_download.xml), year [2018](https://data.caida.org/datasets/passive-2018/). Please download the trace directly from CAIDA.
+The evaluation experiments use [The CAIDA Anonymized Internet Traces](https://www.caida.org/data/passive/passive_dataset_download.xml), year [2018](https://data.caida.org/datasets/passive-2018/). Please download the trace directly from CAIDA. You may need to fill out a [request form](https://www.caida.org/data/passive/passive_dataset_request.xml).
 
 ### Trace Pre-processing
 
