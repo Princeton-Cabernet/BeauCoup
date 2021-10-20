@@ -427,7 +427,7 @@ control SwitchIngress(
             const entries = {
                 {% set K = "hdr.ipv4.src_addr" %}
                 {% set A = "ek_c1_select" %}
-                {% for i in range(16) %}
+                {% for i in keydefn.keys() %}
                 {% if K in keydefn[i] %}
                   {{i}} : {{A}}();
                 {% endif %}
@@ -454,7 +454,7 @@ control SwitchIngress(
             const entries = {
                 {% set K = "hdr.ipv4.dst_addr" %}
                 {% set A = "ek_c2_select" %}
-                {% for i in range(16) %}
+                {% for i in keydefn.keys() %}
                 {% if K in keydefn[i] %}
                   {{i}} : {{A}}();
                 {% endif %}
@@ -487,7 +487,7 @@ control SwitchIngress(
                 {% set A1 = "ek_c3_select_tcp" %}
                 {% set K2 = "hdr.udp.src_port" %}
                 {% set A2 = "ek_c3_select_udp" %}
-                {% for i in range(16) %}
+                {% for i in keydefn.keys() %}
                 {% if K1 in keydefn[i] %}
                   {{i}} : {{A1}}();
                 {% endif %}
@@ -523,7 +523,7 @@ control SwitchIngress(
                 {% set A1 = "ek_c4_select_tcp" %}
                 {% set K2 = "hdr.udp.dst_port" %}
                 {% set A2 = "ek_c4_select_udp" %}
-                {% for i in range(16) %}
+                {% for i in keydefn.keys() %}
                 {% if K1 in keydefn[i] %}
                   {{i}} : {{A1}}();
                 {% endif %}
